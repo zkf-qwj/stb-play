@@ -1,0 +1,1249 @@
+<html>
+<head>
+<meta name="page-view-size" content="1280*720">
+<title>videoPlay</title>
+<script type="text/javascript">
+iPanel.eventFrame.initPage(window);
+//iPanel.clearHistory(-1);
+DVB.stopAV(0);
+DVB.clearVideoLevel();
+E.setMenuAlpha = function(){ 
+	this.setTimeout('media.picture.alpha='+ this.menuAlphaValue +';',200); 
+	this.setMenuAlpha = function(){};
+};
+var playUrl = "{[$playurl]}";
+var firstPlay  = true;
+var playFlag   = false; //视频是否正常播放状态
+var exitFlag   = false; //提示退出操作
+var adShowFlag = false;
+var cableFlag  = true;
+var networkFlag = true;
+
+var playMedia    = {};
+var playBarFlag  = false;
+var playBarTime  = 5000;
+var playBarTimer = -1;
+
+var volume = new E.volume();
+var currVolume = volume.getCurrVolume();
+var muteStatus = volume.getMuteStatus() //0表示未静音，1表示静音
+var volumeFlag = true;
+
+var startTime  = 0;
+var currTime   = -1;
+var dragTime   = -1;
+var totalTime  = 0;
+
+var seekPos    = 0;
+var seekValue  = [0,0,0,0,0,0];
+var seekStatus = false; //seek操作
+
+var exitPos  = 0;
+var exitInfo = [["确定","Yes"],["取消","No"],["温馨提示","Warm tips"]];
+var exitType = 0;
+var exitMsgs = [
+				["是否终止观看?","Confirm eixt?"],
+				["是否终止观看, 进入互动首页?","Confirm eixt, Enter portal?"],
+				["尊敬的用户，您的暂停时间过长，是否终止观看?","Your pause for a long time, Confirm eixt?"]
+				];
+
+var iconList = { 
+		stop:    { id:"upIcon",    pos:0, pic:["ui://stop0.png","ui://stop1.png","ui://stop2.png"]}, 
+		pause:   { id:"downIcon",  pos:0, pic:["ui://zt0.png","ui://zt1.png","ui://zt2.png"]},
+		backward:{ id:"leftIcon",  pos:0, pic:["ui://left0.png","ui://left1.png","ui://left2.png"]}, 
+		forward: { id:"rightIcon", pos:0, pic:["ui://right0.png","ui://right1.png","ui://right2.png"]}
+};
+
+var hideTimeor   = 0;
+var showTimeor   = -1;
+var warningTimor = -1;
+var networkTimor = -1;
+
+function eventHandler(eventObj, type) {
+	//iPanel.debug("usbVideoPlay.htm eventObj.code = " + eventObj.code +" type = " + type);
+	if(type == 1){
+		switch (eventObj.code){
+			case "KEY_UP":
+				if(exitFlag){
+
+				}else if(seekStatus){
+					changeSeekNum(1);	
+				}else if(playFlag){
+					switch(playMedia.getState()){
+						case "play":
+						//case "forward":
+						//case "backward":
+							playMedia.stop();
+							showPlayBar();
+							clearTimeout(playBarTimer);
+							keyDownEffect("stop");
+							break;
+					}
+				}
+				break;
+			case "KEY_DOWN":
+				if(exitFlag){
+					
+				}else if(seekStatus){
+					changeSeekNum(-1);	
+				}else if(playFlag){
+					switch(playMedia.getState()){
+						case "play":
+						//case "forward":
+						//case "backward":
+							playMedia.pause();
+							showPlayBar();
+							keyDownEffect("pause");
+							break;
+					}
+				}
+				break;
+			case "KEY_LEFT":	
+				if(exitFlag){
+					changeExitItem(-1);
+				}else if(seekStatus){
+					changeSeekItem(-1);
+				}else if(playFlag){
+					switch(playMedia.getState()){
+						case "play":
+						case "forward":
+						case "backward":
+							/**/playMedia.back();
+							showPlayBar();
+							clearTimeout(playBarTimer);
+							keyDownEffect("backward");
+							break;
+						case "pause":
+							moveDragBar(-60);
+							break;
+					}
+				}			
+				break;
+			case "KEY_RIGHT":
+				if(exitFlag){
+					changeExitItem(1);
+				}else if(seekStatus){
+					changeSeekItem(1);
+				}else if(playFlag){
+					switch(playMedia.getState()){
+						case "play":
+						case "forward":
+						case "backward":
+							/**/playMedia.forward();
+							showPlayBar();
+							clearTimeout(playBarTimer);
+							keyDownEffect("forward");
+							break;
+						case "pause":
+							moveDragBar(60);
+							break;
+					}
+				}
+				break;
+			case "KEY_RED":
+				if(exitFlag){
+
+				}else if(seekStatus){
+					hideSeekPanel();
+				}else if(playFlag){
+					switch(playMedia.getState()){
+						case "play":
+						//case "forward":
+						//case "backward":
+							showSeekPanel();
+							break;
+					}
+				}
+				break
+			case "KEY_NUMERIC":
+				if(exitFlag){
+
+				}else if(seekStatus){
+					inputSeekNum(eventObj.args.value);
+				}else if(playFlag){
+					switch(playMedia.getState()){
+						case "play":
+						//case "forward":
+						//case "backward":
+							showSeekPanel();
+							break;
+					}
+				}
+				break;
+			case "KEY_PAGE_UP":
+				break;
+			case "KEY_PAGE_DOWN":
+				break;
+			case "KEY_VOLUME_DOWN":				
+				if(exitFlag) return 0;
+				hideExitNote();
+				hideSeekPanel();
+				switch(playMedia.getState()){
+					case "play":
+						volumeAdjust(-3);
+						break;
+				}
+				break;
+			case "KEY_VOLUME_UP":
+				if(exitFlag) return 0;
+				hideExitNote();
+				hideSeekPanel();
+				switch(playMedia.getState()){
+					case "play":
+						volumeAdjust(3);
+						break;
+				}
+				break;
+			case "KEY_MUTE":
+				volume.hide();
+				volume.hideAudioMode();
+				muteStatus = volume.actionMute();
+				return 0;
+				break;
+			case "KEY_AUDIO_MODE":
+				action_audio_mode();
+				break;
+			case "KEY_SELECT":
+				selectEvent();
+				break;
+			case "KEY_INFO":				
+				if(exitFlag){
+
+				}else if(seekStatus){
+
+				}else if(playFlag){
+					switch(playMedia.getState()){
+						case "play":
+							if(playBarFlag) hidePlayBar();
+							else showPlayBar();
+							break;
+					}
+				}
+				break;
+			case "KEY_MENU":
+				if(exitFlag) return 0;
+				showExitNote(1);
+				break;
+			case "KEY_EXIT":
+			//case "KEY_BACK":
+				if(exitFlag){
+					hideExitNote();
+				}else if(seekStatus){
+					hideSeekPanel();
+				}else{					
+					switch(playMedia.getState()){
+						case "pause":
+						case "forward":
+						case "backward":
+							if(playFlag) playMedia.play();
+							showPlayBar();
+							break;
+						default:
+							showExitNote();
+							break;
+					}
+				}
+				break;
+		}
+	}else if (type == 2){
+		switch(eventObj.code){
+			case "EIS_VOD_PREPAREPLAY_SUCCESS":	 //5202
+				var tempValue = eventObj.args.modifiers;
+				//iPanel.debug("zhangb tempValue = "+tempValue);
+				if(tempValue==0){
+					playMedia.play();
+					showBarInfo();
+					return 0;
+				}else if(tempValue==1){
+					showOverMain(lang?"Video coding is not supported":"视频编码不支持");
+				}else if(tempValue==2){
+					showOverMain(lang?"Audio coding is not supported":"音频编码不支持");
+				}else if(tempValue==3){
+					showOverMain(lang?"Do not support audio and video encoding":"音视频编码都不支持");
+				}else{
+					showOverMain(lang?"Can not play video files":"视频文件无法播放");
+				}
+				setTimeout("confirmExit()",2000);
+				return 0;
+				break;
+			case "EIS_VOD_CONNECT_FAILED"://5203
+				showOverMain(lang?"video connect failed":"视频连接失败");
+				playFlag = false;
+				setTimeout("confirmExit()",2000);
+				break;
+			case "EIS_VOD_PLAY_SUCCESS"://5205
+				if(firstPlay){
+					window.setTimeout(function(){
+						playFlag  = true;
+						firstPlay = false;
+						playMedia.showFlag();
+						hideOverMain();
+						showPlayBar();
+					}, 500);
+				}else{
+					playFlag = true;
+				}
+				break;
+			case "EIS_VOD_PLAY_FAILED"://5206
+				showOverMain(lang?"video open failed":"视频打开失败");
+				playFlag = false;
+				setTimeout("confirmExit()",2000);
+				break;
+			case "EIS_VOD_PROGRAM_BEGIN"://5209
+				playMedia.replay();
+				showOverMain(lang?"program restart play":"节目重新播放");
+				showPlayBar();
+				setTimeout("hideOverMain()",2000);
+				break;
+			case "EIS_VOD_PROGRAM_END"://5210
+				showOverMain(lang?"program finish":"节目播放完毕,3秒后退出");
+				currTime = totalTime;
+				clearTimeout(showTimeor);
+				refreshProgress();
+				playFlag = false;
+				setTimeout("confirmExit()",3000);
+				break;	
+			case "EIS_VOD_START_FAILED"://5221 VOD启动失败
+				showOverMain(lang?"vod start failed":"VOD启动失败");
+				playFlag = false;
+				setTimeout("confirmExit()",2000);
+				break;		
+			case "EIS_VOD_START_BUFF"://5222 底层开始缓冲数据，等待播放
+				showOverMain(lang?"Loading VOD, please wait...":"正在加载影片，请稍候...");
+				break;
+			case "EIS_VOD_STOP_BUFF"://5223 缓冲数据结束，已开始播放
+				break;
+			case "EIS_VOD_OUT_OF_RANGE"://5224 传入的时间超出有效范围
+				break;			
+			case "EIS_VOD_GET_PARAMETER_FAILED": //5227
+				showOverMain(lang?"data connect failed":"数据连接失败");
+				playFlag = false;
+				setTimeout("confirmExit()",2000);
+				break;
+			case "EIS_VOD_GET_PARAMETER_SUCCESS": //5226
+				hideOverMain();
+				break;
+			case "EIS_VOD_USER_EXCEPTION": //5225
+				showVodException(eventObj.args.modifiers);
+				playFlag = false;
+				break;
+			case "DVB_TUNE_SUCCESS":
+				//if(firstPlay) break;
+			case "DVB_CABLE_CONNECT_SUCCESS":
+				//cableNote(0);
+				//playFlag = true;
+				break;
+			case "DVB_TUNE_FAILED":
+			case "DVB_CABLE_CONNECT_FAILED":
+				//cableNote(1);
+				//playFlag = false;
+				break;
+			case "EIS_IP_NETWORK_CONNECT": //网上插上
+				checkStatus();
+				return 0;
+				break;
+			case "EIS_IP_NETWORK_DISCONNECT": //网线断开
+				networkNote(1);
+				playFlag = false;
+				return 0;
+				break;
+			case "EIS_DEVICE_USB_DELETE":
+			case "EIS_DEVICE_USB_UNAVAILABLE":
+				media.AV.close();
+				window.setTimeout('window.location.href = "usbIndex.htm";',2500);
+				break;
+		}
+	}
+	return eventObj.args.type;
+}
+
+function init(){
+	//iPanel.debug("zhangb usbVideoPlay.htm init.....");
+	showOverMain(lang?"Loading VOD, please wait...":"正在加载影片，请稍候...");
+	media.video.fullScreen(); 
+
+	var macAddress = network.ethernets[0].MACAddress.replace(/-/g, "");
+	//iPanel.debug("network.ethernets[0].MACAddress="+macAddress);
+	var rtsp_url = Request(window.location.href,"videoPath");
+	
+		
+	playMedia = new Media();
+	playMedia.rtspUrl = rtsp_url;
+	playMedia.open();
+
+	initExitNote();
+	showCurrDate();
+	showVolumeBar();
+	volume.checkMuteStatus();
+}
+
+function Media(){
+	this.state = "";
+	this.speed = 1;
+	this.timer = -1;
+	this.progName = "";
+	this.rtspUrl  = "";
+	this.wardFlag = false;
+}
+Media.prototype.open = function (){
+	//iPanel.debug("zhangb localfile vod rtsp = "+this.rtspUrl);
+//	media.AV.open("http://61.155.130.134/sohu/s26h23eab6/playlist/346255.m3u8?key=tJ2gas56ew8-M1ANNZut3VZYzsDZRCXZ1x6xqfh8GEY.&ver=seg&n=1&a=4901&cip=117.89.223.97&uid=C1A793BB-685F-4F49-A38E-11F2AA2397C1&plat=3&qd=1","HTTP");
+//	media.AV.open("http://192.168.1.114:8080/1/shcm/PT/vod-0ba8ab25c8a1dce4a4b9e9da7c0411092/index.m3u8","HTTP");
+//	media.AV.open("http://192.168.1.222:8035/live/45d40f139cada2437e56b8fb46da736c/playlist.m3u8","HTTP");
+	if (playUrl){
+		if (playUrl.indexOf("rtsp") > -1){
+			var type = "VOD";
+		}else if (playUrl.indexOf("http") > -1){
+			var type = "HTTP";
+		}
+	}
+	media.AV.open(playUrl,type);
+}
+Media.prototype.replay = function(){
+	//iPanel.debug("zhangb replay");
+	this.speed = 1; //media.AV.speed;
+	this.state ="play";
+	this.showFlag();	
+	clearTimeout(this.timer);
+	this.timer = window.setTimeout(function(){
+		playMedia.wardFlag = false;
+		media.AV.seek('00:00:00');
+		//DVB.clearVideoLevel();
+		currTime = 0;
+		clearTimeout(showTimeor);
+		showTimeor=setTimeout("refreshProgress();",1000);
+	},1);
+}
+Media.prototype.play = function(){
+	//iPanel.debug("zhangb play");
+	this.speed = 1;
+	this.state ="play";
+	if(!firstPlay) this.showFlag();
+	clearTimeout(this.timer);
+	this.timer = window.setTimeout(function(){
+		playMedia.wardFlag = false;
+		media.AV.play();
+	},1);
+}
+Media.prototype.stop = function(){
+	//iPanel.debug("zhangb stop");
+	this.speed = 1;
+	this.state ="stop";
+	this.showFlag();	
+	clearTimeout(this.timer);
+	this.timer = window.setTimeout(function(){
+		playMedia.wardFlag = false;
+		media.AV.seek('00:00:00');
+		//DVB.clearVideoLevel();
+		setTimeout(function(){
+		media.AV.pause();
+		},300);
+		currTime = 0;
+		clearTimeout(showTimeor);
+		showTimeor=setTimeout("refreshProgress();",1000);
+	},1);
+} 
+Media.prototype.pause = function(){
+	//iPanel.debug("zhangb pause");
+	//showAdsInfo();
+	this.speed = 1;
+	this.state ="pause";
+	this.showFlag();	
+	clearTimeout(this.timer);
+	this.timer = window.setTimeout(function(){
+		playMedia.wardFlag = false;
+		media.AV.pause();
+	},1);
+} 
+Media.prototype.seek = function(__time){
+	//iPanel.debug("zhangb seek time = "+__time);
+	var tempTime = formatTime(__time);
+	//iPanel.debug("zhangb seek tempTime = "+tempTime);
+	this.speed = 1;
+	this.state ="play";
+	this.showFlag();	
+	clearTimeout(this.timer);
+	playMedia.wardFlag = false;
+	media.AV.seek(tempTime);
+	//DVB.clearVideoLevel();
+	currTime = __time;
+	clearTimeout(showTimeor);
+	showTimeor=setTimeout("refreshProgress();",1000);  //解决seek后media.AV.elapsed时间没有马上同步，导致进度条显示不正常；
+}
+Media.prototype.forward = function(){
+	//iPanel.debug("zhangb barFlag="+playBarFlag);	
+	this.speed = this.speed<1 || this.speed*2>16 ? 1 : this.speed*2; //media.AV.speed;
+	if(this.speed==2) this.speed = 4; //去掉2倍速
+	this.state = this.speed==1 ? "play" : "forward";
+	//iPanel.debug("zhangb forward speed = "+this.speed);
+	this.showFlag();
+	this.setWard();
+}
+Media.prototype.back = function(){
+	//iPanel.debug("zhangb back barFlag="+playBarFlag);
+	this.speed = this.speed>1 || Math.abs(this.speed)*-2<-16 ? 1 : Math.abs(this.speed)*-2; //media.AV.speed;
+	if(this.speed==-2) this.speed = -4; //去掉-2倍速
+	this.state = this.speed==1 ? "play" : "backward";
+	//iPanel.debug("zhangb back speed = "+this.speed);
+	this.showFlag();
+	this.setWard();
+}
+Media.prototype.setWard = function(){
+	var self = this;
+	var time = self.speed==1 ? 1 : (self.wardFlag ? 1 : 1);
+	clearTimeout(this.timer);
+	this.timer = window.setTimeout(function(){
+		if(self.speed==1){
+			self.wardFlag = false;
+			//iPanel.debug("zhangb media.AV.play()");
+			media.AV.play();
+			showPlayBar();
+		}else if(self.speed>1){
+			self.wardFlag = true;
+			//iPanel.debug("zhangb media.AV.forward("+ self.speed +")");
+			media.AV.forward(self.speed);
+			//DVB.clearVideoLevel();
+		}else if(self.speed<1){
+			self.wardFlag = true;
+			//iPanel.debug("zhangb media.AV.backward("+ self.speed +")");
+			media.AV.backward(""+self.speed);
+			//DVB.clearVideoLevel();
+		}
+	},time);
+}
+Media.prototype.getState = function(){
+	//iPanel.debug("zhangb media.AV.status = " + media.AV.status);
+	//this.state = media.AV.status;//应用自己来记录这个状态
+	return this.state;
+}
+Media.prototype.getProName = function(){
+	var tempNum = this.rtspUrl.lastIndexOf("/");
+	this.progName = this.rtspUrl.substr(tempNum+1);
+	//iPanel.debug("zhangb progName ="+this.progName);
+	return this.progName;
+}
+Media.prototype.showFlag = function(){
+	//iPanel.debug("zhangb status = "+this.getState());
+	if(this.getState()!="pause"){ hideAdsInfo(); }
+	switch(this.getState()){
+		case "play":
+			$("stateIcon").style.backgroundImage = "url(ui://bfm.png)";
+			$("speedStep").innerText ="";
+			refreshIcon([0,0,0,0]);
+			break;
+		case "pause":
+			$("stateIcon").style.backgroundImage = "url(ui://ztm.png)";
+			$("speedStep").innerText ="";
+			refreshIcon([1,1,1,1]);
+			break;
+		case "forward":
+			$("stateIcon").style.backgroundImage = "url(ui://kfm.png)";
+			$("speedStep").innerText = ""+this.speed;
+			refreshIcon([1,1,0,0]);
+			break;
+		case "backward":
+			$("stateIcon").style.backgroundImage = "url(ui://mfm.png)";
+			$("speedStep").innerText = ""+Math.abs(this.speed);
+			refreshIcon([1,1,0,0]);
+			break;
+		case "stop":
+			$("stateIcon").style.backgroundImage = "url(ui://tzm.png)";
+			$("speedStep").innerText ="";
+			refreshIcon([1,1,1,1]);
+			break;
+	}
+}
+
+function Request(__url, argname){ 
+	var arrStr = __url.substring(__url.indexOf("?")+1).split("&"); 
+	for(var i =0;i<arrStr.length;i++){ 
+		var loc = arrStr[i].indexOf(argname+"="); 
+		if(loc!=-1){ return arrStr[i].replace(argname+"=","").replace("?",""); break; } 
+	} 
+	return ""; 
+}
+
+function keyDownEffect(__type){
+	var tempIcon = iconList[__type];
+	$(tempIcon.id).src = tempIcon.pic[2];
+	window.setTimeout("$('"+ tempIcon.id +"').src = '"+ tempIcon.pic[tempIcon.pos] +"';", 1000);
+}
+
+function refreshIcon(__list){
+	var tempArr = ["stop", "pause", "backward", "forward"];
+	for(var i=0; i<tempArr.length; i++){
+		var tempIcon = iconList[tempArr[i]];
+		if(tempIcon.pos != __list[i]){
+			tempIcon.pos = __list[i];
+			$(tempIcon.id).src = tempIcon.pic[tempIcon.pos];
+		}
+	}
+}
+
+function showCurrDate(){
+	currDate.innerText = E.globalTimeFormat();
+	window.setTimeout("showCurrDate()",60000);
+}
+
+function showPlayBar(){
+	if(!playBarFlag){
+		volume.hide();
+		playBarFlag = true;
+		$("stateIcon").style.visibility  = "visible";
+		$("speedStep").style.visibility  = "visible";
+		$("playBarDiv").style.visibility = "visible";
+	}
+	totalTime = media.AV.duration;
+	endTime.innerText = formatTime(totalTime);
+	currTime = media.AV.elapsed;
+	beginTime.innerText = formatTime(currTime);
+
+	clearTimeout(playBarTimer);
+	playBarTimer = setTimeout("hidePlayBar()", playBarTime);
+}
+
+function hidePlayBar(){
+	if(playBarFlag&&playMedia.getState()!="pause"){
+		playBarFlag = false;
+		$("stateIcon").style.visibility  = "hidden";
+		$("speedStep").style.visibility  = "hidden";
+		$("playBarDiv").style.visibility = "hidden";
+	}
+}
+
+function showBarInfo(){
+	if(currTime==-1) currTime = media.AV.elapsed;
+	totalTime = media.AV.duration;
+	endTime.innerText   = formatTime(totalTime);
+	beginTime.innerText = formatTime(currTime);
+	movieName.innerText = movieName.combiString(playMedia.getProName(), 660, "...");
+	refreshProgress();
+}
+
+function refreshProgress(){
+	var status = playMedia.state;
+	if(playFlag&&status!="pause"){
+		//iPanel.debug("media.AV.elapsed= "+ media.AV.elapsed);		
+		if(playMedia.wardFlag){
+			hideTimeor = 0;
+			var tempTime = media.AV.elapsed;
+			if((status=="forward"&&currTime>tempTime)||(status=="backward"&&currTime<tempTime)) currTime++;
+			else currTime = tempTime;
+		}else if(!playBarFlag){
+			hideTimeor++;
+			var tempTime = media.AV.elapsed;
+			currTime = Math.abs(currTime-tempTime)<3||hideTimeor>20 ? tempTime : currTime+1;
+		}else if(status=="stop"){
+			hideTimeor = 0;
+			currTime = media.AV.elapsed;
+		}else{
+			hideTimeor = 0;
+			var tempTime = media.AV.elapsed;
+			if(currTime>tempTime) currTime++;
+			else currTime = tempTime;
+		}
+		if(currTime>totalTime) currTime = totalTime;
+		showProgress(currTime);
+	}
+	//clearTimeout(showTimeor);
+	showTimeor=setTimeout("refreshProgress();",500);
+}
+
+function showProgress(__time){
+	var bar_length = Math.floor(parseInt(__time*448)/totalTime);
+	if(bar_length <= 0) bar_length = 1;
+	beginTime.innerText  = formatTime(__time);
+	progress.style.width = bar_length+'px';
+}
+
+function formatNums(__time){
+	var tempArr = __time.split(":");
+	return parseInt(tempArr[0],10)*3600 + parseInt(tempArr[1],10)*60 + parseInt(tempArr[2],10);
+}
+
+function formatTime(__time){
+	var hour = Math.floor(__time/3600);
+	var minute = Math.floor((__time%3600)/60);
+	var second = __time - minute*60 - hour*3600;
+	hour = hour < 10 ? "0"+hour:hour;
+	minute = minute < 10 ? "0"+minute:minute;
+	second = second < 10 ? "0"+second:second;
+	return hour + ":" + minute + ":" + second;
+}
+
+function moveDragBar(__num){	
+	if(dragTime==-1) dragTime = currTime;
+	if(dragTime<=startTime&&__num<0){
+		warningMsg(lang?"movie start!":"已经到达影片开始位置");
+		return;
+	}else if(dragTime>=totalTime&&__num>0){
+		warningMsg(lang?"movie end!  ":"已经到达影片结束位置");
+		return;
+	}
+	dragTime += __num;
+	//iPanel.debug("zhangb dragTime = "+dragTime);
+	if(dragTime<startTime) dragTime = startTime;
+	else if(dragTime>totalTime) dragTime = totalTime;
+	showProgress(dragTime);	
+}
+
+function showAdsInfo(){
+	if(adShowFlag) return;
+	adShowFlag= true;
+	$("dragbar").src = "ui://rightTimeBar1.png";
+	$("adImageDiv").style.visibility = "visible";
+}
+
+function hideAdsInfo(){
+	if(!adShowFlag) return;
+	dragTime  = -1;
+	adShowFlag= false;
+	$("dragbar").src = "ui://rightTimeBar.png";
+	$("adImageDiv").style.visibility = "hidden";
+}
+
+function showOverMain(str){//提示DIV
+	$("overMain").style.visibility = "visible";
+	$("reminder").innerHTML  = str;
+}
+
+function hideOverMain(){//隐藏提示DIV
+	$("overMain").style.visibility = "hidden";
+}
+
+function warningMsg(str){
+	clearTimeout(warningTimor);
+	showOverMain(str);
+	warningTimor = setTimeout("hideOverMain()",2000);
+}
+
+/////////////////音量控制代码START////////////////////
+
+function volumeAdjust(__offset) {
+	if(playBarFlag){
+		hidePlayBar();
+	}
+	if (muteStatus==1) muteStatus = volume.actionMute(0);
+	if((__offset<0&&currVolume==0)||(__offset>0&&currVolume==99)){ volume.show(); return; }
+	if(__offset > 0) volume.up(__offset, 99);
+	else volume.down(__offset, 0);
+	currVolume = volume.getCurrVolume();
+	if(currVolume == 0 && __offset < 0){//cdq 添加这个是为了避免出现当显示的0时，还会出现有声音的问题
+		volume.setVolume(currVolume);
+	}
+	showVolumeBar();
+}
+
+function showVolumeBar() {
+	//iPanel.debug("showVolumeBar = " + parseInt((currVolume/99)*31*23));
+	$("vol_num").innerText = currVolume;
+	$("volume_value").style.width = parseInt((currVolume/99)*31*23);
+	if(currVolume==0&&volumeFlag){
+		volumeFlag = false;
+		$("vol_pic").style.display = "none";
+	}else if(currVolume>0&&!volumeFlag){
+		volumeFlag = true;
+		$("vol_pic").style.display = "block";
+	}
+}
+
+function action_audio_mode(){
+	//iPanel.debug("zhangb action_audio_mode...");
+	var tempIcon = ["url(ui://zsd.png)","url(ui://rsd.png)","url(ui://lts.png)"];
+	var tempList = ['left', 'right', 'stereo'];
+	var tempSize = tempList.length;
+	var tempPos  = get_mode_pos(media.sound.mode, tempList);
+	tempPos = ((tempPos+1)%tempSize+tempSize)%tempSize;
+	media.sound.mode = tempList[tempPos];
+	audio_mode.style.backgroundImage = tempIcon[get_mode_pos(media.sound.mode, tempList)];
+	volume.showAudioMode();
+}
+
+function get_mode_pos(__mode, __list){
+	//iPanel.debug("zhangb __mode = "+__mode);
+	for(var i=0; i<__list.length; i++) if(__mode==__list[i]) return i;
+	return 0;
+}
+
+/////////////////音量控制代码END////////////////////
+
+///////////////////选时播放代码START///////////////////////
+
+function showSeekValue(){
+	for(var i=0; i<seekValue.length; i++)$("num"+i).innerText = seekValue[i];
+}
+
+function inputSeekNum(__num){
+	$("num"+seekPos).innerText = seekValue[seekPos] = __num;
+	changeSeekItem(1);
+}
+
+function changeSeekNum(__num){
+	var tempNum = parseInt(seekValue[seekPos],10);
+	$("num"+seekPos).innerText = seekValue[seekPos] = ((tempNum+__num)%10+10)%10;
+}
+
+function changeSeekItem(__num){
+	setSeekStyle(0);
+	var tempSize = seekValue.length;
+	seekPos = ((seekPos+__num)%tempSize+tempSize)%tempSize;
+	setSeekStyle(1);
+}
+
+function setSeekStyle(__type){
+	$("num"+seekPos).style.backgroundImage = __type==0 ? "url(ui://seleT0.png)" : "url(ui://seleT1.png)";
+}
+
+function showSeekPanel(){
+	if(seekStatus) return;
+	var tempTime = formatTime(currTime).replace(/:/g, "");
+	//iPanel.debug("zhangb showSeekPanel tempTime = "+tempTime);
+	volume.hide();
+	seekStatus = true;	
+	seekValue = tempTime.split("");
+	showSeekValue();
+	changeSeekItem(seekPos*-1);
+	$("seekPanel").style.visibility = "visible";
+}
+
+function hideSeekPanel(){
+	if(!seekStatus) return;
+	seekStatus =false;
+	$("seekPanel").style.visibility = "hidden";
+}
+
+///////////////////选时播放代码END///////////////////////
+
+function selectEvent(){
+	//iPanel.debug("zhangb select seekStatus ="+seekStatus);
+	if(exitFlag){
+		hideExitNote();
+		if(exitPos==0){
+			confirmExit();
+		}else{
+			
+		}
+		return;			
+	}	
+	if(!playFlag) return;
+	if(seekStatus){
+		showPlayBar();
+		var seektime = ""+seekValue[0] + seekValue[1] +":"+ seekValue[2] + seekValue[3] +":"+ seekValue[4] + seekValue[5];
+		//iPanel.debug("zhangb seektime="+seektime);
+		seektime = formatNums(seektime);	
+		if(seektime<startTime||seektime>totalTime){
+			warningMsg(lang?"input overflow":"输入时间超出时长");
+		}else{
+			//iPanel.debug("zhangb seekStatus seektime="+seektime);
+			playMedia.seek(seektime);
+		}
+		hideSeekPanel();
+		return;
+	}
+	var status = playMedia.getState();
+	//iPanel.debug("zhangb selectEvent status = " + status);
+	if(status=='play'){
+		playMedia.pause();
+		showPlayBar();
+	}else if(status=='stop'||status=='pause'||status=='forward'||status=='backward'){
+		if(dragTime==-1){
+			playMedia.play();
+		}else{
+			playMedia.seek(dragTime);
+		}
+		showPlayBar();
+	}
+}
+
+/////////////////退出确认提示START//////////////////
+
+function initExitNote(){
+	for(var i=0; i<exitInfo.length; i++) $("exitText"+i).innerText = exitInfo[i][lang];
+}
+
+function showExitNote(__type){
+	if(exitFlag) return;
+	exitFlag = true;
+	exitType = !__type ? 0 : __type;
+	changeExitItem(exitPos*-1);
+	$("exitText3").innerHTML = exitMsgs[exitType][lang];
+	$("overPanel").style.visibility = "visible";
+}
+
+function hideExitNote(){
+	if(!exitFlag) return;
+	exitFlag = false;
+	$("overPanel").style.visibility = "hidden";
+}
+
+function changeExitItem(__num){
+	$("exitText"+exitPos).style.backgroundImage = "url(ui://focusText0.png)";
+	exitPos = ((exitPos+__num)%2+2)%2;
+	$("exitText"+exitPos).style.backgroundImage = "url(ui://focusText1.png)";
+}
+
+function confirmExit(){
+	//iPanel.debug("ipanel,confirmExit");
+	media.av.stop();
+	//iPanel.debug("ipanel,media.av.stop");
+	media.av.close();
+	//iPanel.debug("ipanel,media.av.close");
+	clearTimeout(showTimeor);
+	clearTimeout(playBarTimer);
+	media.AV.close();
+	DVB.clearVideoLevel();
+	if(exitType == 1){
+		E.check_index();
+	}else{
+		if(networkFlag){
+			if(E.saveCurrBack) window.location.href = E.saveCurrBack.href;
+			else history.back();
+		}
+		else window.location.href = "ui://index.htm";
+	}
+}
+
+function checkStatus(){
+	var tempFlag = E.check_network(-1, true);
+	//iPanel.debug("zhangb network tempFlag = " + tempFlag);
+	if(tempFlag==3){
+		showOverMain(lang?"Successful network connection":"网络连接成功");
+		playFlag = true;
+		window.setTimeout("networkNote(0);",2000);
+		return 0;
+	}else{
+		showOverMain(lang?"Network connection, please wait ...":"网络连接中，请稍等...");
+	}
+	window.setTimeout("checkStatus();",200);
+}
+
+function cableNote(__num){
+	/*if(__num==1){
+		cableFlag = false;
+		showOverMain(lang?"check cable network":"E48请检查射频连线，<br>或与96766客服联系");
+		networkTimor = setTimeout("confirmExit()",10000);
+	}else if(__num==0){
+		cableFlag = true;
+		clearTimeout(networkTimor);
+		if(networkFlag) hideOverMain();
+		else networkNote(1);
+	}*/
+}
+
+function networkNote(__num){
+	if(__num==1){
+		networkFlag = false;
+		showOverMain(lang?"Network cable unplugged":"网线未连接,请检查网线连接");
+		networkTimor = setTimeout("confirmExit()",10000);
+	}else if(__num==0){
+		networkFlag = true;
+		clearTimeout(networkTimor);
+		if(cableFlag) hideOverMain();
+		else cableNote(1);
+	}
+}
+
+/////////////////退出确认提示END//////////////////
+
+function showVodException(__code){
+	showOverMain(checkVodException(__code));
+	setTimeout(function(){
+		//iPanel.debug("showVodException timeout 5000!");
+		hideOverMain();
+		confirmExit();
+	},5000);
+}
+
+function checkVodException(__code){
+	//iPanel.debug("checkVodException lang=="+lang);
+	switch(__code){
+		case 201:
+			return lang?"Created":"创建中";
+			break;
+		case 250:
+			return lang?"Low on Storage Space":"低存储空间";
+			break;
+		case 300:
+			return lang?"Multiple Choices":"多重选择";
+			break;
+		case 301:
+			return lang?"Moved Permanently":"永久移动";
+			break;
+		case 302:
+			return lang?"Moved Temporarily":"临时移动";
+			break;
+		case 303:
+			return lang?"See Other":"见其它";
+			break;
+		case 304:
+			return lang?"Not Modified":"未修改";
+			break;
+		case 305:
+			return lang?"Use Proxy":"使用代理";
+			break;
+		case 400:
+			return lang?"Bad Request":"错误的要求";
+			break;
+		case 401:
+			return lang?"Unauthorized":"未授权"; 
+			break;
+		case 402:
+			return lang?"Payment Required":"请求付费";
+			break;
+		case 403:
+			return lang?"Forbidden":"禁用的";
+			break;
+		case 404:
+			return lang?"Not Found":"未找到";
+			break;
+		case 405:
+			return lang?"Method Not Allowed":"不允许使用的方法";
+			break;
+		case 406:
+			return lang?"Not Acceptable":"请求不可接受";
+			break;
+		case 407:
+			return lang?"Proxy Authentication Required":"代理服务器需要身份验证";
+			break;
+		case 408:
+			return lang?"Request Time-out":"请求超时";
+			break;
+		case 410:
+			return lang?"Gone":"离开";
+			break;
+		case 411:
+			return lang?"Length Required":"要求提供长度";
+			break;
+		case 412:
+			return lang?"Precondition Failed":"前提条件不正确";
+			 break;
+		case 413:
+			return lang?"Request Entity Too Large":"请求实体过大";
+			break;
+		case 414:
+			return lang?"Request-URI Too Large":"请求URI太大";
+			break;
+		case 415:
+			return lang?"Unsupported Media Type":"不支持的媒体类型";
+			break;
+		case 451:
+			return lang?"Parameter Not Understood":"参数不理解";
+			break;
+		case 452:
+			return lang?"Conference Not Found":"会话未找到";
+			break;
+		case 453:
+			return lang?"Not Enough Bandwidth":"没有足够的带宽";
+			break;
+		case 454:
+			return lang?"Session Not Found":"连接未找到";
+			 break;
+		case 455:
+			return lang?"Method Not Valid in This State":"该方法处理无效状态";
+			break;
+		case 456:
+			return lang?"Header Field Not Valid for Resource":"头信息不是有效的资源";
+			break;
+		case 457:
+			return lang?"Invalid Range":"无效的范围";
+			break;
+		case 458:
+			return lang?"Parameter Is Read-Only":"参数是只读的";
+			break;
+		case 459:
+			return lang?"Aggregate Operation Not Allowed":"不允许聚合操作";
+			break;
+		case 460:
+			return lang?"Only Aggregate Operation Allowed":"只允许聚合操作";
+			break;
+		case 461:
+			return lang?"Unsupported Transport":"不支持的传输";
+			break;
+		case 462:
+			return lang?"Destination Unreachable":"终点不可到达";
+			break;
+		case 500:
+			return lang?"Internal Server Error":"内部服务器错误";
+			break;
+		case 501:
+			return lang?"Not Implemented":"未实现";
+			break;
+		case 502:
+			return lang?"Bad Gateway":"无效的网关";
+			break;
+		case 503:
+			return lang?"Service Unavailable":"服务不可用";
+			break;
+		case 504:
+			return lang?"Gateway Time-out":"网关超时";
+			break;
+		case 505:
+			return lang?"Version Not Supported":"版本不支持";
+			break;
+		case 551:
+			return lang?"Option not supported":"选项不支持";
+			break;
+		case 2101:
+			return lang?"Read STB Serial number failure":"读取机顶盒号失败";
+			break;
+		case 2102:
+			return lang?"Invalid parameters play":"无效的播放参数";
+			break;
+		case 2103:
+			return lang?"Buffer data out":"缓冲数据超时";
+			break;
+		case 2104:
+			return lang?"Flow time Exception, Unable to repair":"流时间戳异常，无法修复";
+			break;
+		case 2105:
+			return lang?"Can not connect to server":"不能连接服务器";
+			break;
+		case 2106:
+			return lang?"socket exception, disconnecting session":"连接异常，断开会话";
+			break;
+		case 2201:
+			return lang?"Administrator Kick":"管理员踢除";
+			break;
+		case 2202:
+			return lang?"Play the source error":"播放源错误";
+			break;
+		case 2203:
+			return lang?"BEGINSESSION ERR":"启动会话错误";
+			break;
+		case 2204:
+			return lang?"LOGIN ERR":"登录错误";
+			break;
+		case 2205:
+			return lang?"RegionId error":"区域ID错误";  //TRANSFERREQUIRE ERR
+			break;
+		case 2206:
+			return lang?"Insufficient channel":"信道不足";
+			break;
+		case 2207:
+			return lang?"BEGINPROXYSESSION ERR":"启动代理会话错误";
+			break;
+		case 2208:
+			return lang?"Start timeout":"启动超时";
+			break;
+		case 2209:
+			return lang?"Pause timeout":"暂停超时"; 
+			break;
+		case 2210:
+			return lang?"Exit timeout":"退出超时";
+			break;
+		case 2211:
+			return lang?"Keep-alive timeout":"保活超时";
+			break;
+		case 2212:
+			return lang?"Play the end":"播放结束";
+			break;
+		case 2401:
+			return lang?"ANNOUNCE Message":"消息公布";
+			break;
+		default:
+			return lang?"Unknown error":"未知错误";
+			break;
+	}
+}
+
+
+function exit_page(){
+	E.setMenuAlpha = function(){ 
+		this.setTimeout('media.picture.alpha=100;',200); 
+		this.setMenuAlpha = function(){};
+	}
+}
+
+</script>
+<style type="text/css">
+ul {margin:0px;	padding:0px; position:absolute;}
+li {list-style-type:none; background:no-repeat;}
+
+#volume li{display:inline;}
+#seekPanel td.nums{ width:47px; text-align:center; color:#000000; padding-top:8px; font-size:40px; background:url(ui://seleT0.png) no-repeat center; }
+#seekPanel td.text{ font-size:18px; color:#ffffff; width:12px; padding-top:42px;  background: url() no-repeat; }
+</style>
+</head>
+<body bgcolor="transparent" leftmargin="0" topmargin="0" onLoad="init()" onUnload="exit_page()">
+<!-- 暂停广告位 -->
+<div style="position:absolute; left:0px; top:0px; width:1280px; height:720px; background:url(ui://zz.png); visibility: hidden;" id="adImageDiv">
+	<div style="position:absolute; left:365px; top:120px; width:550px; height:398px; padding-top:2px; background:url(ui://vodAdsBg.png) no-repeat center; text-align:center;"><img src="ui://guanggao1.jpg" width="546" height="393"  id="adImg"/></div>
+</div>
+<div style="position:absolute; left:482px; top:433px; width:386px; height:121px; background:url(ui://seleBg.png) no-repeat center; visibility:hidden" id="seekPanel">
+  <table  border="0" cellspacing="0" cellpadding="0" align="center">
+  <tr>
+    <td class="nums" height="119" id="num0">0</td>
+    <td class="nums" id="num1">0</td>
+    <td class="text">时</td>
+    <td class="nums" id="num2">0</td>
+    <td class="nums" id="num3">0</td>
+    <td class="text">分</td>
+    <td class="nums" id="num4">0</td>
+    <td class="nums" id="num5">0</td>
+    <td class="text">秒</td>
+  </tr>
+</table>
+</div>
+<!-- 提示信息 -->
+<div id="overMain" style="position:absolute; left:303px; top:220px; width:674px; height:210px; text-align:center; background:url(ui://small_note.png); visibility: hidden;">
+<table width="85%" height="100%" align="center" border="0" cellpadding="0" cellspacing="0">
+	<tr><td id="reminder" colspan="10" align="center" style="font-size:32px; line-height:58px; color:#ffffff;">&nbsp;</td></tr>
+</table>
+</div>
+<!-- 声道条 -->
+<div id="audio_mode" style="position:absolute; left:109px; top:134px; width:88px; height:88px; background:url() center no-repeat; visibility:hidden;"><span id="mode_value" style="display:none;"></span></div>
+<!-- 静音条 -->
+<div id="mute_icon" style="position:absolute; left:1069px; top:134px; width:88px; height:88px; background-image:url(ui://jy.png); visibility:hidden;"></div>
+<!-- 当前状态图标 -->
+<div id="stateIcon" style="position:absolute; background:url(ui://mfm.png); left:1069px; top:134px; width:88px; height:88px; visibility: hidden;"></div>
+<div id="speedStep" style="position:absolute; left:1119px; top:150px; width:35px; height:27px; text-align:center; font-size:25px; font-weight:bold; color:#FFFFFF; visibility: hidden;"></div>
+<!-- 音量条 -->
+<ul id="volume" style="position:absolute; left:191px; top:522px; width:891px; height:55px; background:url(ui://jdtBg.png) no-repeat; visibility:hidden;">
+	<li style="width:68px;">&nbsp;</li>
+	<li style="width:732px; padding-bottom:15px;"><span id="vol_pic"><img src="ui://jdt_left.png" width="8" height="25" /><img id="volume_value" src="ui://jdt_center.png" width="0" height="25" /><img src="ui://jdt_right.png" width="8" height="25" /></span></li>
+	<li id="vol_num" style="width:68px; height:55px; line-height:48px; text-align:center;font-size:32px; color:#ffffff;">&nbsp;</li>
+</ul>
+<!-- 播放条 -->
+<div id="playBarDiv" style="position:absolute; left:208px; top:513px; width:878px; height:175px; background: url(ui://vodPlayBar.png) no-repeat; z-index:1; visibility: hidden;">
+	<img id="upIcon"     style="position:absolute; left:48px; top:6px; width:50px; height:50px;" src="ui://stop0.png"/>
+	<img id="downIcon"   style="position:absolute; left:48px; top:99px; width:50px; height:50px;" src="ui://zt0.png"/>
+	<img id="centerIcon" style="position:absolute; left:35px; top:41px; width:74px; height:74px;" src="ui://play2.png"/>
+	<img id="leftIcon"   style="position:absolute; left:1px; top:53px; width:50px; height:50px;" src="ui://left0.png"/>
+	<img id="rightIcon"  style="position:absolute; left:94px; top:53px; width:50px; height:50px;" src="ui://right0.png"/>
+	<div style="position:absolute; left:182px; top:115px; width:670px; height:0px; ">
+<!--
+	<table width="666" border="0" cellspacing="0" cellpadding="0" style="color:#cccccc; font-size:18px;">
+	  <tr>
+		<td width="26"><img src="ui://ico10.png" width="26" height="29" /></td>
+		<td width="95">选时观看</td>
+		<td width="26"><img src="ui://ico11.png" width="26" height="29" /></td>
+		<td width="197">帮助</td>
+		<td width="149">&nbsp;</td>
+		<td width="173" align="center" id="currDate"></td>
+	  </tr>
+	</table>
+-->
+	</div>
+	<div id="movieName" style="position:absolute; left:182px; top:48px; width:669px; height:0px; font-size:30px; color:#ffffff;"></div>
+	<div style="position:absolute; left:182px; top:90px; width:77px; height:0px; font-size:18px; color:#cccccc;" id="beginTime">00:00:00</div>
+	<div style="position:absolute; left:759px; top:90px; width:90px; height:0px;font-size:18px; color:#cccccc;" id="endTime">00:00:00</div>
+	<div style="position:absolute; left:269px; top:86px; width:477px; height:0px;"><img src="ui://leftTimeBar.png" width="1" height="29" id="progress"/><img id="dragbar" src="ui://rightTimeBar.png" width="29" height="29" /></div>
+</div>
+
+<!-- 退出提示 -->
+<div id="overPanel" style="position:absolute; left:303px; top:140px; width:674px; height:400px; background:url(ui://big_note.png); z-index:2; visibility:hidden;">
+<table width="580" border="0" align="center" cellpadding="0" cellspacing="0" style="color:#ffffff; font-size:30px;">
+  <tr>
+  	<td height="68" colspan="2" valign="bottom"><h1 id="exitText2" style="padding-left:50px; font-size:32px;"></h1></td>
+  </tr>
+  <tr>
+  	<td height="220" colspan="2" align="center" valign="middle"><div id="exitText3" style="line-height:50px; padding:15px 0px;"></div></td>
+  </tr>
+  <tr>
+    <td width="290" height="50" align="center" background="ui://focusText1.png" id="exitText0" style="background: no-repeat center;"></td>
+    <td width="290" align="center" background="ui://focusText0.png" id="exitText1" style="background: no-repeat center;"></td>
+  </tr>
+</table>
+</div>
+</body>
+</html>
